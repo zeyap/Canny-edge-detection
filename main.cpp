@@ -4,11 +4,11 @@
 #include "opencv2/highgui.hpp"
 using namespace std;
 using namespace cv;
-#define DELAY_CAPTION 150
+#define DELAY_CAPTION 1500
 #define DELAY_DISPLAY 100
-#define KERNEL_LENGTH 5
-#define LOWER_THRES 4
-#define HIGHER_THRES 15
+#define KERNEL_LENGTH 7
+#define LOWER_THRES 6
+#define HIGHER_THRES 11
 #define PI 3.14f
 Mat src; 
 Mat dst; 
@@ -32,7 +32,7 @@ void thresholding(Mat src, Mat &dst, uchar t);
 void doubleThresholding(Mat src, Mat &dst, uchar tl, uchar th);
 void hysteresis(Mat &dst, Mat ldst);
 bool findBreakpoint(int i, int j);
-int trace(Mat ldst, int i, int j, int neighbor,int* status);
+int trace(Mat* ldst, int i, int j, int neighbor,int* status);
 
 int h, w;
 
@@ -228,7 +228,7 @@ void hysteresis(Mat &dst, Mat ldst) {
 				int y,x;
 				y = i;
 				x = j;
-				trace(ldst,y,x,0, status);
+				trace(&ldst,y,x,0, status);
 			}
 		}
 	}
@@ -252,17 +252,17 @@ bool findBreakpoint(int i,int j) {
 	return sum == 1;
 }
 
-int trace(Mat ldst, int i, int j, int neighbor, int* status) {
+int trace(Mat* ldst, int i, int j, int neighbor, int* status) {
 	uchar octaConnectLow[8];
 	while (1) {
-		octaConnectLow[0] = ldst.at<uchar>(i, j - 1);
-		octaConnectLow[1] = ldst.at<uchar>(i + 1, j - 1);
-		octaConnectLow[2] = ldst.at<uchar>(i + 1, j);
-		octaConnectLow[3] = ldst.at<uchar>(i + 1, j + 1);
-		octaConnectLow[4] = ldst.at<uchar>(i, j + 1);
-		octaConnectLow[5] = ldst.at<uchar>(i - 1, j + 1);
-		octaConnectLow[6] = ldst.at<uchar>(i - 1, j);
-		octaConnectLow[7] = ldst.at<uchar>(i - 1, j - 1);
+		octaConnectLow[0] = ldst->at<uchar>(i, j - 1);
+		octaConnectLow[1] = ldst->at<uchar>(i + 1, j - 1);
+		octaConnectLow[2] = ldst->at<uchar>(i + 1, j);
+		octaConnectLow[3] = ldst->at<uchar>(i + 1, j + 1);
+		octaConnectLow[4] = ldst->at<uchar>(i, j + 1);
+		octaConnectLow[5] = ldst->at<uchar>(i - 1, j + 1);
+		octaConnectLow[6] = ldst->at<uchar>(i - 1, j);
+		octaConnectLow[7] = ldst->at<uchar>(i - 1, j - 1);
 		for (int k = 0; k < 8; k++) {
 			int octaPointIndex = (neighbor + k) % 8;
 			int y, x;
@@ -284,7 +284,7 @@ int trace(Mat ldst, int i, int j, int neighbor, int* status) {
 					//update
 					i = y;
 					j = x;
-					neighbor = octaPointIndex - 1;
+					neighbor = (octaPointIndex +7)%8;
 					return trace(ldst, i, j, neighbor, status);
 				}
 				else {
