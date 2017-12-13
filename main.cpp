@@ -6,9 +6,9 @@ using namespace std;
 using namespace cv;
 #define DELAY_CAPTION 150
 #define DELAY_DISPLAY 100
-#define KERNEL_LENGTH 11
+#define KERNEL_LENGTH 5
 #define LOWER_THRES 4
-#define HIGHER_THRES 8
+#define HIGHER_THRES 15
 #define PI 3.14f
 Mat src; 
 Mat dst; 
@@ -30,8 +30,9 @@ void nonMaxSuppression(Mat src, Mat &dst, Gradient &g);
 void Sector(Gradient &g);
 void thresholding(Mat src, Mat &dst, uchar t);
 void doubleThresholding(Mat src, Mat &dst, uchar tl, uchar th);
-void findContours(Mat &dst, Mat ldst);
-void trackLowThresholdContourFromBreakpoint(Mat ldst, int i, int j, int* status);
+void hysteresis(Mat &dst, Mat ldst);
+bool findBreakpoint(int i, int j);
+int trace(Mat ldst, int i, int j, int neighbor,int* status);
 
 int h, w;
 
@@ -205,10 +206,10 @@ void doubleThresholding(Mat src, Mat &dst, uchar tl, uchar th) {
 	ldst=src.clone();
 	thresholding(src, dst, th);
 	thresholding(src, ldst, tl);
-	findContours(dst,ldst);
+	hysteresis(dst,ldst);
 }
 
-void findContours(Mat &dst, Mat ldst) {
+void hysteresis(Mat &dst, Mat ldst) {
 	int* status = new int[w*h];//0-low/zero 1-high 2-low&accepted
 	for (int i = 0; i < h; i++) {
 		for (int j = 0; j < w; j++) {
@@ -223,33 +224,35 @@ void findContours(Mat &dst, Mat ldst) {
 	
 	for (int i = 1; i < h-1; i++) {
 		for (int j = 1; j < w-1; j++) {
-			uchar octaConnect[8];
-			octaConnect[0] = dst.at<uchar>(i,j-1);
-			octaConnect[1] = dst.at<uchar>(i+1,j - 1);
-			octaConnect[2] = dst.at<uchar>(i+1,j);
-			octaConnect[3] = dst.at<uchar>(i+1,j + 1);
-			octaConnect[4] = dst.at<uchar>(i,j + 1);
-			octaConnect[5] = dst.at<uchar>(i-1,j + 1);
-			octaConnect[6] = dst.at<uchar>(i-1,j);
-			octaConnect[7] = dst.at<uchar>(i-1,j - 1);
-			int sum=0;
-			for (int k = 0; k < 8; k++) {
-				sum += octaConnect[k]/255;
-			}
-			if (sum==1) {//is a breakpoint
+			if (findBreakpoint(i,j)) {//is a breakpoint
 				int y,x;
 				y = i;
 				x = j;
-				trackLowThresholdContourFromBreakpoint(ldst,y,x, status);
+				trace(ldst,y,x,0, status);
 			}
 		}
 	}
 
 }
 
-void trackLowThresholdContourFromBreakpoint(Mat ldst, int i, int j, int* status) {
-	int neighbor=0;
-	bool connected = false;
+bool findBreakpoint(int i,int j) {
+	uchar octaConnect[8];
+	octaConnect[0] = dst.at<uchar>(i, j - 1);
+	octaConnect[1] = dst.at<uchar>(i + 1, j - 1);
+	octaConnect[2] = dst.at<uchar>(i + 1, j);
+	octaConnect[3] = dst.at<uchar>(i + 1, j + 1);
+	octaConnect[4] = dst.at<uchar>(i, j + 1);
+	octaConnect[5] = dst.at<uchar>(i - 1, j + 1);
+	octaConnect[6] = dst.at<uchar>(i - 1, j);
+	octaConnect[7] = dst.at<uchar>(i - 1, j - 1);
+	int sum = 0;
+	for (int k = 0; k < 8; k++) {
+		sum += octaConnect[k] / 255;
+	}
+	return sum == 1;
+}
+
+int trace(Mat ldst, int i, int j, int neighbor, int* status) {
 	uchar octaConnectLow[8];
 	while (1) {
 		octaConnectLow[0] = ldst.at<uchar>(i, j - 1);
@@ -282,23 +285,18 @@ void trackLowThresholdContourFromBreakpoint(Mat ldst, int i, int j, int* status)
 					i = y;
 					j = x;
 					neighbor = octaPointIndex - 1;
-					break;
+					return trace(ldst, i, j, neighbor, status);
 				}
 				else {
-					connected = true;
-					break;
+					return 1;
 				}
 			}
-			else {
+			else {//falls below lower threshold
 				if (k == 7) {
-					connected = true;
+					return 0;
 				}
 			}
 			
-		}
-		if (connected) {
-			connected = false;
-			break;
 		}
 	}
 }
