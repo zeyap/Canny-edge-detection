@@ -4,14 +4,14 @@
 #include "opencv2/highgui.hpp"
 using namespace std;
 using namespace cv;
-#define DELAY_CAPTION 150
+#define DELAY_CAPTION 1500
 #define DELAY_DISPLAY 100
 #define KERNEL_LENGTH 7
-#define HIGH_THRESHOLD_PERCENTAGE 0.2f
+#define HIGH_THRESHOLD_PERCENTAGE 0.15f
 #define PI 3.14f
 Mat src; 
 Mat dst; 
-char window_name[] = "Smoothing Demo";
+char window_name[] = "Canny Edge Detector Demo";
 int display_caption(const char* caption, Mat dst);
 int display_dst(int delay, Mat dst);
 int display_caption(const char* caption);
@@ -31,6 +31,7 @@ void thresholding(Mat src, Mat &dst, uchar t);
 void estimateThreshold(Mat src, uchar* high, uchar* low);
 void doubleThresholding(Mat src, Mat &dst, uchar tl, uchar th);
 void hysteresis(Mat &dst, Mat ldst);
+int * getNeigborIndex(Gradient &g, int i, int j);
 bool findBreakpoint(int i, int j);
 int trace(Mat* ldst, int i, int j, int neighbor,int* status);
 
@@ -39,7 +40,7 @@ int h, w;
 int main(int argc, char ** argv)
 {
 	namedWindow(window_name, WINDOW_AUTOSIZE);
-	const char* filename = argc >= 2 ? argv[1] : "lena.png";
+	const char* filename = argc >= 2 ? argv[1] : "gears.jpg";
 	src = imread(filename, IMREAD_COLOR);
 	h = src.size[0];
 	w = src.size[1];
@@ -149,28 +150,11 @@ Gradient gradient_sobel(Mat src, Mat &dst) {
 void nonMaxSuppression(Mat src, Mat &dst, Gradient &g) {
 	Sector(g);
 	g.N = new float[w*h];
-	int i1, i2;
+	int* index;
 	for (int i = 1; i < h - 1; i++) {
 		for (int j = 1; j < w - 1; j++) {
-			switch (g.zeta[i*w + j]) {
-			case 0:
-				i1 = i*w + j-1;
-				i2 = i*w + j + 1;
-				break;
-			case 1:
-				i1 = (i-1)*w + j + 1;
-				i2 = (i+1)*w + j - 1;
-				break;
-			case 2:
-				i1 = (i - 1)*w + j;
-				i2 = (i + 1)*w + j;
-				break;
-			case 3:
-				i1 = (i - 1)*w + j - 1;
-				i2 = (i + 1)*w + j + 1;
-				break;
-			}
-			if (g.M[i*w + j] < g.M[i1] || g.M[i*w + j] < g.M[i2]) {
+			index=getNeigborIndex(g,i,j);
+			if (g.M[i*w + j] < g.M[index[0]] || g.M[i*w + j] < g.M[index[1]]) {
 				g.N[i*w + j] = 0;
 			}
 			else {
@@ -180,6 +164,29 @@ void nonMaxSuppression(Mat src, Mat &dst, Gradient &g) {
 		}
 	}
 
+}
+
+int * getNeigborIndex(Gradient &g, int i, int j) {
+	int index[2];
+	switch (g.zeta[i*w + j]) {
+	case 0:
+		index[0] = i*w + j - 1;
+		index[1] = i*w + j + 1;
+		break;
+	case 1:
+		index[0] = (i - 1)*w + j + 1;
+		index[1] = (i + 1)*w + j - 1;
+		break;
+	case 2:
+		index[0] = (i - 1)*w + j;
+		index[1] = (i + 1)*w + j;
+		break;
+	case 3:
+		index[0] = (i - 1)*w + j - 1;
+		index[1] = (i + 1)*w + j + 1;
+		break;
+	}
+	return index;
 }
 
 void Sector(Gradient &g) {
@@ -266,7 +273,6 @@ void hysteresis(Mat &dst, Mat ldst) {
 			}
 		}
 	}
-
 	
 	for (int i = 1; i < h-1; i++) {
 		for (int j = 1; j < w-1; j++) {
@@ -281,57 +287,38 @@ void hysteresis(Mat &dst, Mat ldst) {
 
 }
 
+const int yOffset[] = {0,1,1,1,0,-1,-1,-1};
+const int xOffset[] = {-1,-1,0,1,1,1,0,-1};
+
 bool findBreakpoint(int i,int j) {
-	uchar octaConnect[8];
-	octaConnect[0] = dst.at<uchar>(i, j - 1);
-	octaConnect[1] = dst.at<uchar>(i + 1, j - 1);
-	octaConnect[2] = dst.at<uchar>(i + 1, j);
-	octaConnect[3] = dst.at<uchar>(i + 1, j + 1);
-	octaConnect[4] = dst.at<uchar>(i, j + 1);
-	octaConnect[5] = dst.at<uchar>(i - 1, j + 1);
-	octaConnect[6] = dst.at<uchar>(i - 1, j);
-	octaConnect[7] = dst.at<uchar>(i - 1, j - 1);
+	uchar eightNeighbor[8];
 	int sum = 0;
 	for (int k = 0; k < 8; k++) {
-		sum += octaConnect[k] / 255;
+		eightNeighbor[k] = dst.at<uchar>(i + yOffset[k], j + xOffset[k]);
+		sum += eightNeighbor[k] / 255;
 	}
 	return sum == 1;
 }
 
 int trace(Mat* ldst, int i, int j, int neighbor, int* status) {
-	uchar octaConnectLow[8];
+	uchar eightNeighborLow[8];
+	for (int k = 0; k < 8; k++) {
+		eightNeighborLow[k] = ldst->at<uchar>(i+yOffset[k], j + xOffset[k]);
+	}
+
 	while (1) {
-		octaConnectLow[0] = ldst->at<uchar>(i, j - 1);
-		octaConnectLow[1] = ldst->at<uchar>(i + 1, j - 1);
-		octaConnectLow[2] = ldst->at<uchar>(i + 1, j);
-		octaConnectLow[3] = ldst->at<uchar>(i + 1, j + 1);
-		octaConnectLow[4] = ldst->at<uchar>(i, j + 1);
-		octaConnectLow[5] = ldst->at<uchar>(i - 1, j + 1);
-		octaConnectLow[6] = ldst->at<uchar>(i - 1, j);
-		octaConnectLow[7] = ldst->at<uchar>(i - 1, j - 1);
 		for (int k = 0; k < 8; k++) {
-			int octaPointIndex = (neighbor + k) % 8;
-			int y, x;
-			switch (octaPointIndex) {
-			case 0:y = i; x = j - 1; break;
-			case 1:y = i + 1; x = j - 1; break;
-			case 2:y = i + 1; x = j; break;
-			case 3:y = i + 1; x = j + 1; break;
-			case 4:y = i; x = j + 1; break;
-			case 5:y = i - 1; x = j + 1; break;
-			case 6:y = i - 1; x = j; break;
-			case 7:y = i - 1; x = j - 1; break;
-			}
-			if (octaConnectLow[octaPointIndex] != 0) {
+			int neighborIndex = (neighbor + k) % 8;
+			if (eightNeighborLow[neighborIndex] != 0) {
+				int y = i + yOffset[neighborIndex];
+				int x = j + xOffset[neighborIndex];
 				if (status[y*w + x] == 0) {
 					//accept this point
 					dst.at<uchar>(y, x) = 255;
 					status[y*w + x] = 2;
 					//update
-					i = y;
-					j = x;
-					neighbor = (octaPointIndex +7)%8;
-					return trace(ldst, i, j, neighbor, status);
+					neighbor = (neighborIndex +7)%8;
+					return trace(ldst, y, x, neighbor, status);
 				}
 				else {
 					return 1;
@@ -346,3 +333,4 @@ int trace(Mat* ldst, int i, int j, int neighbor, int* status) {
 		}
 	}
 }
+
